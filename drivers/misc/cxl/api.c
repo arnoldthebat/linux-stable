@@ -25,7 +25,6 @@ struct cxl_context *cxl_dev_context_init(struct pci_dev *dev)
 
 	afu = cxl_pci_to_afu(dev);
 
-	get_device(&afu->dev);
 	ctx = cxl_context_alloc();
 	if (IS_ERR(ctx)) {
 		rc = PTR_ERR(ctx);
@@ -61,7 +60,6 @@ err_mapping:
 err_ctx:
 	kfree(ctx);
 err_dev:
-	put_device(&afu->dev);
 	return ERR_PTR(rc);
 }
 EXPORT_SYMBOL_GPL(cxl_dev_context_init);
@@ -87,8 +85,6 @@ int cxl_release_context(struct cxl_context *ctx)
 	if (ctx->status >= STARTED)
 		return -EBUSY;
 
-	put_device(&ctx->afu->dev);
-
 	cxl_context_free(ctx);
 
 	return 0;
@@ -105,6 +101,7 @@ EXPORT_SYMBOL_GPL(cxl_allocate_afu_irqs);
 
 void cxl_free_afu_irqs(struct cxl_context *ctx)
 {
+	afu_irq_name_free(ctx);
 	cxl_release_irq_ranges(&ctx->irqs, ctx->afu->adapter);
 }
 EXPORT_SYMBOL_GPL(cxl_free_afu_irqs);
@@ -175,7 +172,7 @@ int cxl_start_context(struct cxl_context *ctx, u64 wed,
 
 	if (task) {
 		ctx->pid = get_task_pid(task, PIDTYPE_PID);
-		get_pid(ctx->pid);
+		ctx->glpid = get_task_pid(task->group_leader, PIDTYPE_PID);
 		kernel = false;
 	}
 

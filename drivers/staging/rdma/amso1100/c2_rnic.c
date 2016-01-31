@@ -81,7 +81,6 @@
 static int c2_adapter_init(struct c2_dev *c2dev)
 {
 	struct c2wr_init_req wr;
-	int err;
 
 	memset(&wr, 0, sizeof(wr));
 	c2_wr_set_id(&wr, CCWR_INIT);
@@ -94,9 +93,7 @@ static int c2_adapter_init(struct c2_dev *c2dev)
 	wr.q2_host_msg_pool = cpu_to_be64(c2dev->aeq.host_dma);
 
 	/* Post the init message */
-	err = vq_send_wr(c2dev, (union c2wr *) & wr);
-
-	return err;
+	return vq_send_wr(c2dev, (union c2wr *) & wr);
 }
 
 /*
@@ -261,9 +258,9 @@ int c2_add_addr(struct c2_dev *c2dev, __be32 inaddr, __be32 inmask)
 	err = c2_errno(reply);
 	vq_repbuf_free(c2dev, reply);
 
-      bail1:
+bail1:
 	kfree(wr);
-      bail0:
+bail0:
 	vq_req_free(c2dev, vq_req);
 	return err;
 }
@@ -323,9 +320,9 @@ int c2_del_addr(struct c2_dev *c2dev, __be32 inaddr, __be32 inmask)
 	err = c2_errno(reply);
 	vq_repbuf_free(c2dev, reply);
 
-      bail1:
+bail1:
 	kfree(wr);
-      bail0:
+bail0:
 	vq_req_free(c2dev, vq_req);
 	return err;
 }
@@ -378,9 +375,9 @@ static int c2_rnic_open(struct c2_dev *c2dev)
 
 	c2dev->adapter_handle = reply->rnic_handle;
 
-      bail1:
+bail1:
 	vq_repbuf_free(c2dev, reply);
-      bail0:
+bail0:
 	vq_req_free(c2dev, vq_req);
 	return err;
 }
@@ -430,9 +427,9 @@ static int c2_rnic_close(struct c2_dev *c2dev)
 
 	c2dev->adapter_handle = 0;
 
-      bail1:
+bail1:
 	vq_repbuf_free(c2dev, reply);
-      bail0:
+bail0:
 	vq_req_free(c2dev, vq_req);
 	return err;
 }
@@ -589,21 +586,21 @@ int c2_rnic_init(struct c2_dev *c2dev)
 	c2_init_qp_table(c2dev);
 	return 0;
 
-      bail5:
+bail5:
 	c2_rnic_close(c2dev);
-      bail4:
+bail4:
 	vq_term(c2dev);
-      bail3:
+bail3:
 	dma_free_coherent(&c2dev->pcidev->dev,
 			  c2dev->aeq.q_size * c2dev->aeq.msg_size,
 			  q2_pages, dma_unmap_addr(&c2dev->aeq, mapping));
-      bail2:
+bail2:
 	dma_free_coherent(&c2dev->pcidev->dev,
 			  c2dev->rep_vq.q_size * c2dev->rep_vq.msg_size,
 			  q1_pages, dma_unmap_addr(&c2dev->rep_vq, mapping));
-      bail1:
+bail1:
 	c2_free_mqsp_pool(c2dev, c2dev->kern_mqsp_pool);
-      bail0:
+bail0:
 	vfree(c2dev->qptr_array);
 
 	return err;

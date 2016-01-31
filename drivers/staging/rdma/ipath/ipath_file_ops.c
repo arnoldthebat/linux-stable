@@ -825,13 +825,13 @@ static void ipath_clean_part_key(struct ipath_portdata *pd,
 				ipath_stats.sps_pkeys[j] =
 					dd->ipath_pkeys[j] = 0;
 				pchanged++;
+			} else {
+				ipath_cdbg(VERBOSE, "p%u key %x matches #%d, "
+					   "but ref still %d\n", pd->port_port,
+					   pd->port_pkeys[i], j,
+					   atomic_read(&dd->ipath_pkeyrefs[j]));
+				break;
 			}
-			else ipath_cdbg(
-				VERBOSE, "p%u key %x matches #%d, "
-				"but ref still %d\n", pd->port_port,
-				pd->port_pkeys[i], j,
-				atomic_read(&dd->ipath_pkeyrefs[j]));
-			break;
 		}
 		pd->port_pkeys[i] = 0;
 	}
@@ -905,7 +905,7 @@ static int ipath_create_user_egr(struct ipath_portdata *pd)
 	 * heavy filesystem activity makes these fail, and we can
 	 * use compound pages.
 	 */
-	gfp_flags = __GFP_WAIT | __GFP_IO | __GFP_COMP;
+	gfp_flags = __GFP_RECLAIM | __GFP_IO | __GFP_COMP;
 
 	egrcnt = dd->ipath_rcvegrcnt;
 	/* TID number offset for this port */
@@ -917,15 +917,15 @@ static int ipath_create_user_egr(struct ipath_portdata *pd)
 	chunk = pd->port_rcvegrbuf_chunks;
 	egrperchunk = pd->port_rcvegrbufs_perchunk;
 	size = pd->port_rcvegrbuf_size;
-	pd->port_rcvegrbuf = kmalloc(chunk * sizeof(pd->port_rcvegrbuf[0]),
-				     GFP_KERNEL);
+	pd->port_rcvegrbuf = kmalloc_array(chunk, sizeof(pd->port_rcvegrbuf[0]),
+					   GFP_KERNEL);
 	if (!pd->port_rcvegrbuf) {
 		ret = -ENOMEM;
 		goto bail;
 	}
 	pd->port_rcvegrbuf_phys =
-		kmalloc(chunk * sizeof(pd->port_rcvegrbuf_phys[0]),
-			GFP_KERNEL);
+		kmalloc_array(chunk, sizeof(pd->port_rcvegrbuf_phys[0]),
+			      GFP_KERNEL);
 	if (!pd->port_rcvegrbuf_phys) {
 		ret = -ENOMEM;
 		goto bail_rcvegrbuf;
@@ -2046,7 +2046,6 @@ static void unlock_expected_tids(struct ipath_portdata *pd)
 
 static int ipath_close(struct inode *in, struct file *fp)
 {
-	int ret = 0;
 	struct ipath_filedata *fd;
 	struct ipath_portdata *pd;
 	struct ipath_devdata *dd;
@@ -2158,7 +2157,7 @@ static int ipath_close(struct inode *in, struct file *fp)
 
 bail:
 	kfree(fd);
-	return ret;
+	return 0;
 }
 
 static int ipath_port_info(struct ipath_portdata *pd, u16 subport,

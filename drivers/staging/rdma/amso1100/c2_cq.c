@@ -173,9 +173,6 @@ static inline int c2_poll_one(struct c2_dev *c2dev,
 	case C2_WR_TYPE_RDMA_READ:
 		entry->opcode = IB_WC_RDMA_READ;
 		break;
-	case C2_WR_TYPE_BIND_MW:
-		entry->opcode = IB_WC_BIND_MW;
-		break;
 	case C2_WR_TYPE_RECV:
 		entry->byte_len = be32_to_cpu(ce->bytes_rcvd);
 		entry->opcode = IB_WC_RECV;
@@ -374,13 +371,13 @@ int c2_init_cq(struct c2_dev *c2dev, int entries,
 
 	return 0;
 
-      bail3:
+bail3:
 	vq_repbuf_free(c2dev, reply);
-      bail2:
+bail2:
 	vq_req_free(c2dev, vq_req);
-      bail1:
+bail1:
 	c2_free_cq_buf(c2dev, &cq->mq);
-      bail0:
+bail0:
 	c2_free_mqsp(cq->mq.shared);
 
 	return err;
@@ -429,9 +426,9 @@ void c2_free_cq(struct c2_dev *c2dev, struct c2_cq *cq)
 	reply = (struct c2wr_cq_destroy_rep *) (unsigned long) (vq_req->reply_msg);
 	if (reply)
 		vq_repbuf_free(c2dev, reply);
-      bail1:
+bail1:
 	vq_req_free(c2dev, vq_req);
-      bail0:
+bail0:
 	if (cq->is_kernel) {
 		c2_free_cq_buf(c2dev, &cq->mq);
 	}

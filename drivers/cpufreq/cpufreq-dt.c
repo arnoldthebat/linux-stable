@@ -50,7 +50,8 @@ static int set_target(struct cpufreq_policy *policy, unsigned int index)
 	struct private_data *priv = policy->driver_data;
 	struct device *cpu_dev = priv->cpu_dev;
 	struct regulator *cpu_reg = priv->cpu_reg;
-	unsigned long volt = 0, volt_old = 0, tol = 0;
+	unsigned long volt = 0, tol = 0;
+	int volt_old = 0;
 	unsigned int old_freq, new_freq;
 	long freq_Hz, freq_exact;
 	int ret;
@@ -83,7 +84,7 @@ static int set_target(struct cpufreq_policy *policy, unsigned int index)
 			opp_freq / 1000, volt);
 	}
 
-	dev_dbg(cpu_dev, "%u MHz, %ld mV --> %u MHz, %ld mV\n",
+	dev_dbg(cpu_dev, "%u MHz, %d mV --> %u MHz, %ld mV\n",
 		old_freq / 1000, (volt_old > 0) ? volt_old / 1000 : -1,
 		new_freq / 1000, volt ? volt / 1000 : -1);
 
@@ -216,7 +217,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	}
 
 	/* Get OPP-sharing information from "operating-points-v2" bindings */
-	ret = of_get_cpus_sharing_opps(cpu_dev, policy->cpus);
+	ret = dev_pm_opp_of_get_sharing_cpus(cpu_dev, policy->cpus);
 	if (ret) {
 		/*
 		 * operating-points-v2 not supported, fallback to old method of
@@ -238,7 +239,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 	 *
 	 * OPPs might be populated at runtime, don't check for error here
 	 */
-	of_cpumask_init_opp_table(policy->cpus);
+	dev_pm_opp_of_cpumask_add_table(policy->cpus);
 
 	/*
 	 * But we need OPP table to function so if it is not there let's
@@ -261,7 +262,7 @@ static int cpufreq_init(struct cpufreq_policy *policy)
 		 * OPP tables are initialized only for policy->cpu, do it for
 		 * others as well.
 		 */
-		ret = set_cpus_sharing_opps(cpu_dev, policy->cpus);
+		ret = dev_pm_opp_set_sharing_cpus(cpu_dev, policy->cpus);
 		if (ret)
 			dev_err(cpu_dev, "%s: failed to mark OPPs as shared: %d\n",
 				__func__, ret);
@@ -368,7 +369,7 @@ out_free_cpufreq_table:
 out_free_priv:
 	kfree(priv);
 out_free_opp:
-	of_cpumask_free_opp_table(policy->cpus);
+	dev_pm_opp_of_cpumask_remove_table(policy->cpus);
 out_node_put:
 	of_node_put(np);
 out_put_reg_clk:
@@ -385,7 +386,7 @@ static int cpufreq_exit(struct cpufreq_policy *policy)
 
 	cpufreq_cooling_unregister(priv->cdev);
 	dev_pm_opp_free_cpufreq_table(priv->cpu_dev, &policy->freq_table);
-	of_cpumask_free_opp_table(policy->related_cpus);
+	dev_pm_opp_of_cpumask_remove_table(policy->related_cpus);
 	clk_put(policy->clk);
 	if (!IS_ERR(priv->cpu_reg))
 		regulator_put(priv->cpu_reg);
@@ -407,8 +408,13 @@ static void cpufreq_ready(struct cpufreq_policy *policy)
 	 * thermal DT code takes care of matching them.
 	 */
 	if (of_find_property(np, "#cooling-cells", NULL)) {
-		priv->cdev = of_cpufreq_cooling_register(np,
-							 policy->related_cpus);
+		u32 power_coefficient = 0;
+
+		of_property_read_u32(np, "dynamic-power-coefficient",
+				     &power_coefficient);
+
+		priv->cdev = of_cpufreq_power_cooling_register(np,
+				policy->related_cpus, power_coefficient, NULL);
 		if (IS_ERR(priv->cdev)) {
 			dev_err(priv->cpu_dev,
 				"running cpufreq without cooling device: %ld\n",

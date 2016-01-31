@@ -43,16 +43,25 @@ static int smsc_phy_ack_interrupt(struct phy_device *phydev)
 
 static int smsc_phy_config_init(struct phy_device *phydev)
 {
+	int __maybe_unused len;
+	struct device *dev __maybe_unused = &phydev->mdio.dev;
+	struct device_node *of_node __maybe_unused = dev->of_node;
 	int rc = phy_read(phydev, MII_LAN83C185_CTRL_STATUS);
+	int enable_energy = 1;
 
 	if (rc < 0)
 		return rc;
 
-	/* Enable energy detect mode for this SMSC Transceivers */
-	rc = phy_write(phydev, MII_LAN83C185_CTRL_STATUS,
-		       rc | MII_LAN83C185_EDPWRDOWN);
-	if (rc < 0)
-		return rc;
+	if (of_find_property(of_node, "smsc,disable-energy-detect", &len))
+		enable_energy = 0;
+
+	if (enable_energy) {
+		/* Enable energy detect mode for this SMSC Transceivers */
+		rc = phy_write(phydev, MII_LAN83C185_CTRL_STATUS,
+			       rc | MII_LAN83C185_EDPWRDOWN);
+		if (rc < 0)
+			return rc;
+	}
 
 	return smsc_phy_ack_interrupt(phydev);
 }
@@ -162,8 +171,6 @@ static struct phy_driver smsc_phy_driver[] = {
 
 	.suspend	= genphy_suspend,
 	.resume		= genphy_resume,
-
-	.driver		= { .owner = THIS_MODULE, }
 }, {
 	.phy_id		= 0x0007c0b0, /* OUI=0x00800f, Model#=0x0b */
 	.phy_id_mask	= 0xfffffff0,
@@ -185,8 +192,6 @@ static struct phy_driver smsc_phy_driver[] = {
 
 	.suspend	= genphy_suspend,
 	.resume		= genphy_resume,
-
-	.driver		= { .owner = THIS_MODULE, }
 }, {
 	.phy_id		= 0x0007c0c0, /* OUI=0x00800f, Model#=0x0c */
 	.phy_id_mask	= 0xfffffff0,
@@ -208,8 +213,6 @@ static struct phy_driver smsc_phy_driver[] = {
 
 	.suspend	= genphy_suspend,
 	.resume		= genphy_resume,
-
-	.driver		= { .owner = THIS_MODULE, }
 }, {
 	.phy_id		= 0x0007c0d0, /* OUI=0x00800f, Model#=0x0d */
 	.phy_id_mask	= 0xfffffff0,
@@ -230,8 +233,6 @@ static struct phy_driver smsc_phy_driver[] = {
 
 	.suspend	= genphy_suspend,
 	.resume		= genphy_resume,
-
-	.driver		= { .owner = THIS_MODULE, }
 }, {
 	.phy_id		= 0x0007c0f0, /* OUI=0x00800f, Model#=0x0f */
 	.phy_id_mask	= 0xfffffff0,
@@ -253,8 +254,27 @@ static struct phy_driver smsc_phy_driver[] = {
 
 	.suspend	= genphy_suspend,
 	.resume		= genphy_resume,
+}, {
+	.phy_id		= 0x0007c110,
+	.phy_id_mask	= 0xfffffff0,
+	.name		= "SMSC LAN8740",
 
-	.driver		= { .owner = THIS_MODULE, }
+	.features	= (PHY_BASIC_FEATURES | SUPPORTED_Pause
+				| SUPPORTED_Asym_Pause),
+	.flags		= PHY_HAS_INTERRUPT | PHY_HAS_MAGICANEG,
+
+	/* basic functions */
+	.config_aneg	= genphy_config_aneg,
+	.read_status	= lan87xx_read_status,
+	.config_init	= smsc_phy_config_init,
+	.soft_reset	= smsc_phy_reset,
+
+	/* IRQ related */
+	.ack_interrupt	= smsc_phy_ack_interrupt,
+	.config_intr	= smsc_phy_config_intr,
+
+	.suspend	= genphy_suspend,
+	.resume		= genphy_resume,
 } };
 
 module_phy_driver(smsc_phy_driver);
@@ -269,6 +289,7 @@ static struct mdio_device_id __maybe_unused smsc_tbl[] = {
 	{ 0x0007c0c0, 0xfffffff0 },
 	{ 0x0007c0d0, 0xfffffff0 },
 	{ 0x0007c0f0, 0xfffffff0 },
+	{ 0x0007c110, 0xfffffff0 },
 	{ }
 };
 

@@ -265,7 +265,6 @@ static struct drm_connector *radeon_dp_add_mst_connector(struct drm_dp_mst_topol
 {
 	struct radeon_connector *master = container_of(mgr, struct radeon_connector, mst_mgr);
 	struct drm_device *dev = master->base.dev;
-	struct radeon_device *rdev = dev->dev_private;
 	struct radeon_connector *radeon_connector;
 	struct drm_connector *connector;
 
@@ -284,14 +283,22 @@ static struct drm_connector *radeon_dp_add_mst_connector(struct drm_dp_mst_topol
 	radeon_connector->mst_encoder = radeon_dp_create_fake_mst_encoder(master);
 
 	drm_object_attach_property(&connector->base, dev->mode_config.path_property, 0);
+	drm_object_attach_property(&connector->base, dev->mode_config.tile_property, 0);
 	drm_mode_connector_set_path_property(connector, pathprop);
+
+	return connector;
+}
+
+static void radeon_dp_register_mst_connector(struct drm_connector *connector)
+{
+	struct drm_device *dev = connector->dev;
+	struct radeon_device *rdev = dev->dev_private;
 
 	drm_modeset_lock_all(dev);
 	radeon_fb_add_connector(rdev, connector);
 	drm_modeset_unlock_all(dev);
 
 	drm_connector_register(connector);
-	return connector;
 }
 
 static void radeon_dp_destroy_mst_connector(struct drm_dp_mst_topology_mgr *mgr,
@@ -322,8 +329,9 @@ static void radeon_dp_mst_hotplug(struct drm_dp_mst_topology_mgr *mgr)
 	drm_kms_helper_hotplug_event(dev);
 }
 
-struct drm_dp_mst_topology_cbs mst_cbs = {
+const struct drm_dp_mst_topology_cbs mst_cbs = {
 	.add_connector = radeon_dp_add_mst_connector,
+	.register_connector = radeon_dp_register_mst_connector,
 	.destroy_connector = radeon_dp_destroy_mst_connector,
 	.hotplug = radeon_dp_mst_hotplug,
 };
@@ -517,11 +525,17 @@ static bool radeon_mst_mode_fixup(struct drm_encoder *encoder,
 	drm_mode_set_crtcinfo(adjusted_mode, 0);
 	{
 	  struct radeon_connector_atom_dig *dig_connector;
+	  int ret;
 
 	  dig_connector = mst_enc->connector->con_priv;
-	  dig_connector->dp_lane_count = drm_dp_max_lane_count(dig_connector->dpcd);
-	  dig_connector->dp_clock = radeon_dp_get_max_link_rate(&mst_enc->connector->base,
-								dig_connector->dpcd);
+	  ret = radeon_dp_get_dp_link_config(&mst_enc->connector->base,
+					     dig_connector->dpcd, adjusted_mode->clock,
+					     &dig_connector->dp_lane_count,
+					     &dig_connector->dp_clock);
+	  if (ret) {
+		  dig_connector->dp_lane_count = 0;
+		  dig_connector->dp_clock = 0;
+	  }
 	  DRM_DEBUG_KMS("dig clock %p %d %d\n", dig_connector,
 			dig_connector->dp_lane_count, dig_connector->dp_clock);
 	}
@@ -633,7 +647,7 @@ radeon_dp_create_fake_mst_encoder(struct radeon_connector *connector)
 	}
 
 	drm_encoder_init(dev, &radeon_encoder->base, &radeon_dp_mst_enc_funcs,
-			 DRM_MODE_ENCODER_DPMST);
+			 DRM_MODE_ENCODER_DPMST, NULL);
 	drm_encoder_helper_add(encoder, &radeon_mst_helper_funcs);
 
 	mst_enc = radeon_encoder->enc_priv;

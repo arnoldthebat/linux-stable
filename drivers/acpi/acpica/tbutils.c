@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -99,29 +99,6 @@ acpi_status acpi_tb_initialize_facs(void)
 
 /*******************************************************************************
  *
- * FUNCTION:    acpi_tb_tables_loaded
- *
- * PARAMETERS:  None
- *
- * RETURN:      TRUE if required ACPI tables are loaded
- *
- * DESCRIPTION: Determine if the minimum required ACPI tables are present
- *              (FADT, FACS, DSDT)
- *
- ******************************************************************************/
-
-u8 acpi_tb_tables_loaded(void)
-{
-
-	if (acpi_gbl_root_table_list.current_table_count >= 4) {
-		return (TRUE);
-	}
-
-	return (FALSE);
-}
-
-/*******************************************************************************
- *
  * FUNCTION:    acpi_tb_check_dsdt_header
  *
  * PARAMETERS:  None
@@ -144,6 +121,7 @@ void acpi_tb_check_dsdt_header(void)
 		ACPI_BIOS_ERROR((AE_INFO,
 				 "The DSDT has been corrupted or replaced - "
 				 "old, new headers below"));
+
 		acpi_tb_print_table_header(0, &acpi_gbl_original_dsdt_header);
 		acpi_tb_print_table_header(0, acpi_gbl_DSDT);
 
@@ -392,7 +370,8 @@ acpi_status __init acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
 		    ACPI_COMPARE_NAME(&acpi_gbl_root_table_list.
 				      tables[table_index].signature,
 				      ACPI_SIG_FADT)) {
-			acpi_tb_parse_fadt(table_index);
+			acpi_gbl_fadt_index = table_index;
+			acpi_tb_parse_fadt();
 		}
 
 next_table:
@@ -401,7 +380,6 @@ next_table:
 	}
 
 	acpi_os_unmap_memory(table, length);
-
 	return_ACPI_STATUS(AE_OK);
 }
 
@@ -411,7 +389,7 @@ next_table:
  *
  * PARAMETERS:  signature           - Sig string to be validated
  *
- * RETURN:      TRUE if signature is correct length and has valid characters
+ * RETURN:      TRUE if signature is has 4 valid ACPI characters
  *
  * DESCRIPTION: Validate an ACPI table signature.
  *
@@ -420,12 +398,6 @@ next_table:
 u8 acpi_is_valid_signature(char *signature)
 {
 	u32 i;
-
-	/* Validate the signature length */
-
-	if (strlen(signature) != ACPI_NAME_SIZE) {
-		return (FALSE);
-	}
 
 	/* Validate each character in the signature */
 

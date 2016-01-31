@@ -245,7 +245,7 @@ static int ipoib_mcast_join_finish(struct ipoib_mcast *mcast,
 
 		priv->qkey = be32_to_cpu(priv->broadcast->mcmember.qkey);
 		spin_unlock_irq(&priv->lock);
-		priv->tx_wr.wr.ud.remote_qkey = priv->qkey;
+		priv->tx_wr.remote_qkey = priv->qkey;
 		set_qkey = 1;
 	}
 
@@ -508,17 +508,19 @@ static void ipoib_mcast_join(struct net_device *dev, struct ipoib_mcast *mcast)
 		rec.hop_limit	  = priv->broadcast->mcmember.hop_limit;
 
 		/*
-		 * Historically Linux IPoIB has never properly supported SEND
-		 * ONLY join. It emulated it by not providing all the required
-		 * attributes, which is enough to prevent group creation and
-		 * detect if there are full members or not. A major problem
-		 * with supporting SEND ONLY is detecting when the group is
-		 * auto-destroyed as IPoIB will cache the MLID..
+		 * Send-only IB Multicast joins do not work at the core
+		 * IB layer yet, so we can't use them here.  However,
+		 * we are emulating an Ethernet multicast send, which
+		 * does not require a multicast subscription and will
+		 * still send properly.  The most appropriate thing to
+		 * do is to create the group if it doesn't exist as that
+		 * most closely emulates the behavior, from a user space
+		 * application perspecitive, of Ethernet multicast
+		 * operation.  For now, we do a full join, maybe later
+		 * when the core IB layers support send only joins we
+		 * will use them.
 		 */
-#if 1
-		if (test_bit(IPOIB_MCAST_FLAG_SENDONLY, &mcast->flags))
-			comp_mask &= ~IB_SA_MCMEMBER_REC_TRAFFIC_CLASS;
-#else
+#if 0
 		if (test_bit(IPOIB_MCAST_FLAG_SENDONLY, &mcast->flags))
 			rec.join_state = 4;
 #endif
@@ -559,7 +561,7 @@ void ipoib_mcast_join_task(struct work_struct *work)
 	}
 	priv->local_lid = port_attr.lid;
 
-	if (ib_query_gid(priv->ca, priv->port, 0, &priv->local_gid))
+	if (ib_query_gid(priv->ca, priv->port, 0, &priv->local_gid, NULL))
 		ipoib_warn(priv, "ib_query_gid() failed\n");
 	else
 		memcpy(priv->dev->dev_addr + 4, priv->local_gid.raw, sizeof (union ib_gid));
@@ -702,6 +704,35 @@ static int ipoib_mcast_leave(struct net_device *dev, struct ipoib_mcast *mcast)
 	return 0;
 }
 
+/*
+ * Check if the multicast group is sendonly. If so remove it from the maps
+ * and add to the remove list
+ */
+void ipoib_check_and_add_mcast_sendonly(struct ipoib_dev_priv *priv, u8 *mgid,
+				struct list_head *remove_list)
+{
+	/* Is this multicast ? */
+	if (*mgid == 0xff) {
+		struct ipoib_mcast *mcast = __ipoib_mcast_find(priv->dev, mgid);
+
+		if (mcast && test_bit(IPOIB_MCAST_FLAG_SENDONLY, &mcast->flags)) {
+			list_del(&mcast->list);
+			rb_erase(&mcast->rb_node, &priv->multicast_tree);
+			list_add_tail(&mcast->list, remove_list);
+		}
+	}
+}
+
+void ipoib_mcast_remove_list(struct list_head *remove_list)
+{
+	struct ipoib_mcast *mcast, *tmcast;
+
+	list_for_each_entry_safe(mcast, tmcast, remove_list, list) {
+		ipoib_mcast_leave(mcast->dev, mcast);
+		ipoib_mcast_free(mcast);
+	}
+}
+
 void ipoib_mcast_send(struct net_device *dev, u8 *daddr, struct sk_buff *skb)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
@@ -808,10 +839,7 @@ void ipoib_mcast_dev_flush(struct net_device *dev)
 		if (test_bit(IPOIB_MCAST_FLAG_BUSY, &mcast->flags))
 			wait_for_completion(&mcast->done);
 
-	list_for_each_entry_safe(mcast, tmcast, &remove_list, list) {
-		ipoib_mcast_leave(dev, mcast);
-		ipoib_mcast_free(mcast);
-	}
+	ipoib_mcast_remove_list(&remove_list);
 }
 
 static int ipoib_mcast_addr_is_valid(const u8 *addr, const u8 *broadcast)
@@ -937,10 +965,7 @@ void ipoib_mcast_restart_task(struct work_struct *work)
 		if (test_bit(IPOIB_MCAST_FLAG_BUSY, &mcast->flags))
 			wait_for_completion(&mcast->done);
 
-	list_for_each_entry_safe(mcast, tmcast, &remove_list, list) {
-		ipoib_mcast_leave(mcast->dev, mcast);
-		ipoib_mcast_free(mcast);
-	}
+	ipoib_mcast_remove_list(&remove_list);
 
 	/*
 	 * Double check that we are still up

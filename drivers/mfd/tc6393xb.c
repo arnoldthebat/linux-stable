@@ -437,8 +437,8 @@ static int tc6393xb_gpio_get(struct gpio_chip *chip,
 	struct tc6393xb *tc6393xb = container_of(chip, struct tc6393xb, gpio);
 
 	/* XXX: does dsr also represent inputs? */
-	return tmio_ioread8(tc6393xb->scr + SCR_GPO_DSR(offset / 8))
-		& TC_GPIO_BIT(offset);
+	return !!(tmio_ioread8(tc6393xb->scr + SCR_GPO_DSR(offset / 8))
+		  & TC_GPIO_BIT(offset));
 }
 
 static void __tc6393xb_gpio_set(struct gpio_chip *chip,
@@ -522,8 +522,7 @@ static int tc6393xb_register_gpio(struct tc6393xb *tc6393xb, int gpio_base)
 
 /*--------------------------------------------------------------------------*/
 
-static void
-tc6393xb_irq(unsigned int irq, struct irq_desc *desc)
+static void tc6393xb_irq(struct irq_desc *desc)
 {
 	struct tc6393xb *tc6393xb = irq_desc_get_handler_data(desc);
 	unsigned int isr;

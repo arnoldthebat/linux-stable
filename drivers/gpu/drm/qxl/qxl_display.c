@@ -244,6 +244,10 @@ static int qxl_crtc_page_flip(struct drm_crtc *crtc,
 	ret = qxl_bo_reserve(bo, false);
 	if (ret)
 		return ret;
+	ret = qxl_bo_pin(bo, bo->type, NULL);
+	qxl_bo_unreserve(bo);
+	if (ret)
+		return ret;
 
 	qxl_draw_dirty_fb(qdev, qfb_src, bo, 0, 0,
 			  &norect, one_clip_rect, inc);
@@ -257,7 +261,11 @@ static int qxl_crtc_page_flip(struct drm_crtc *crtc,
 	}
 	drm_vblank_put(dev, qcrtc->index);
 
-	qxl_bo_unreserve(bo);
+	ret = qxl_bo_reserve(bo, false);
+	if (!ret) {
+		qxl_bo_unpin(bo);
+		qxl_bo_unreserve(bo);
+	}
 
 	return 0;
 }
@@ -513,7 +521,7 @@ static const struct drm_framebuffer_funcs qxl_fb_funcs = {
 int
 qxl_framebuffer_init(struct drm_device *dev,
 		     struct qxl_framebuffer *qfb,
-		     struct drm_mode_fb_cmd2 *mode_cmd,
+		     const struct drm_mode_fb_cmd2 *mode_cmd,
 		     struct drm_gem_object *obj)
 {
 	int ret;
@@ -618,7 +626,7 @@ static int qxl_crtc_mode_set(struct drm_crtc *crtc,
 		  adjusted_mode->hdisplay,
 		  adjusted_mode->vdisplay);
 
-	if (qcrtc->index == 0)
+	if (bo->is_primary == false)
 		recreate_primary = true;
 
 	if (bo->surf.stride * bo->surf.height > qdev->vram_size) {
@@ -868,16 +876,6 @@ static const struct drm_connector_helper_funcs qxl_connector_helper_funcs = {
 	.best_encoder = qxl_best_encoder,
 };
 
-static void qxl_conn_save(struct drm_connector *connector)
-{
-	DRM_DEBUG("\n");
-}
-
-static void qxl_conn_restore(struct drm_connector *connector)
-{
-	DRM_DEBUG("\n");
-}
-
 static enum drm_connector_status qxl_conn_detect(
 			struct drm_connector *connector,
 			bool force)
@@ -886,13 +884,15 @@ static enum drm_connector_status qxl_conn_detect(
 		drm_connector_to_qxl_output(connector);
 	struct drm_device *ddev = connector->dev;
 	struct qxl_device *qdev = ddev->dev_private;
-	int connected;
+	bool connected = false;
 
 	/* The first monitor is always connected */
-	connected = (output->index == 0) ||
-		    (qdev->client_monitors_config &&
-		     qdev->client_monitors_config->count > output->index &&
-		     qxl_head_enabled(&qdev->client_monitors_config->heads[output->index]));
+	if (!qdev->client_monitors_config) {
+		if (output->index == 0)
+			connected = true;
+	} else
+		connected = qdev->client_monitors_config->count > output->index &&
+		     qxl_head_enabled(&qdev->client_monitors_config->heads[output->index]);
 
 	DRM_DEBUG("#%d connected: %d\n", output->index, connected);
 	if (!connected)
@@ -922,10 +922,8 @@ static void qxl_conn_destroy(struct drm_connector *connector)
 
 static const struct drm_connector_funcs qxl_connector_funcs = {
 	.dpms = drm_helper_connector_dpms,
-	.save = qxl_conn_save,
-	.restore = qxl_conn_restore,
 	.detect = qxl_conn_detect,
-	.fill_modes = drm_helper_probe_single_connector_modes_nomerge,
+	.fill_modes = drm_helper_probe_single_connector_modes,
 	.set_property = qxl_conn_set_property,
 	.destroy = qxl_conn_destroy,
 };
@@ -970,7 +968,7 @@ static int qdev_output_init(struct drm_device *dev, int num_output)
 			   &qxl_connector_funcs, DRM_MODE_CONNECTOR_VIRTUAL);
 
 	drm_encoder_init(dev, &qxl_output->enc, &qxl_enc_funcs,
-			 DRM_MODE_ENCODER_VIRTUAL);
+			 DRM_MODE_ENCODER_VIRTUAL, NULL);
 
 	/* we get HPD via client monitors config */
 	connector->polled = DRM_CONNECTOR_POLL_HPD;
@@ -993,7 +991,7 @@ static int qdev_output_init(struct drm_device *dev, int num_output)
 static struct drm_framebuffer *
 qxl_user_framebuffer_create(struct drm_device *dev,
 			    struct drm_file *file_priv,
-			    struct drm_mode_fb_cmd2 *mode_cmd)
+			    const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct drm_gem_object *obj;
 	struct qxl_framebuffer *qxl_fb;

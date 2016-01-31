@@ -1015,7 +1015,7 @@ static struct clock_event_device lguest_clockevent = {
  * This is the Guest timer interrupt handler (hardware interrupt 0).  We just
  * call the clockevent infrastructure and it does whatever needs doing.
  */
-static void lguest_time_irq(unsigned int irq, struct irq_desc *desc)
+static void lguest_time_irq(struct irq_desc *desc)
 {
 	unsigned long flags;
 
@@ -1414,6 +1414,7 @@ __init void lguest_init(void)
 	pv_info.kernel_rpl = 1;
 	/* Everyone except Xen runs with this set. */
 	pv_info.shared_kernel_pmd = 1;
+	pv_info.features = 0;
 
 	/*
 	 * We set up all the lguest overrides for sensitive operations.  These
@@ -1472,7 +1473,6 @@ __init void lguest_init(void)
 	pv_mmu_ops.lazy_mode.leave = lguest_leave_lazy_mmu_mode;
 	pv_mmu_ops.lazy_mode.flush = paravirt_flush_lazy_mmu;
 	pv_mmu_ops.pte_update = lguest_pte_update;
-	pv_mmu_ops.pte_update_defer = lguest_pte_update;
 
 #ifdef CONFIG_X86_LOCAL_APIC
 	/* APIC read/write intercepts */
