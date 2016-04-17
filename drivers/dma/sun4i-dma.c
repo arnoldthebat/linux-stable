@@ -599,13 +599,13 @@ get_next_cyclic_promise(struct sun4i_dma_contract *contract)
 static void sun4i_dma_free_contract(struct virt_dma_desc *vd)
 {
 	struct sun4i_dma_contract *contract = to_sun4i_dma_contract(vd);
-	struct sun4i_dma_promise *promise;
+	struct sun4i_dma_promise *promise, *tmp;
 
 	/* Free all the demands and completed demands */
-	list_for_each_entry(promise, &contract->demands, list)
+	list_for_each_entry_safe(promise, tmp, &contract->demands, list)
 		kfree(promise);
 
-	list_for_each_entry(promise, &contract->completed_demands, list)
+	list_for_each_entry_safe(promise, tmp, &contract->completed_demands, list)
 		kfree(promise);
 
 	kfree(contract);
@@ -1271,6 +1271,7 @@ static const struct of_device_id sun4i_dma_match[] = {
 	{ .compatible = "allwinner,sun4i-a10-dma" },
 	{ /* sentinel */ },
 };
+MODULE_DEVICE_TABLE(of, sun4i_dma_match);
 
 static struct platform_driver sun4i_dma_driver = {
 	.probe	= sun4i_dma_probe,

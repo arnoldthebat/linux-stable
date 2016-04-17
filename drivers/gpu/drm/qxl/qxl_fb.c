@@ -40,7 +40,6 @@
 struct qxl_fbdev {
 	struct drm_fb_helper helper;
 	struct qxl_framebuffer	qfb;
-	struct list_head	fbdev_list;
 	struct qxl_device	*qdev;
 
 	spinlock_t delayed_ops_lock;
@@ -144,14 +143,17 @@ static void qxl_dirty_update(struct qxl_fbdev *qfbdev,
 
 	spin_lock_irqsave(&qfbdev->dirty.lock, flags);
 
-	if (qfbdev->dirty.y1 < y)
-		y = qfbdev->dirty.y1;
-	if (qfbdev->dirty.y2 > y2)
-		y2 = qfbdev->dirty.y2;
-	if (qfbdev->dirty.x1 < x)
-		x = qfbdev->dirty.x1;
-	if (qfbdev->dirty.x2 > x2)
-		x2 = qfbdev->dirty.x2;
+	if ((qfbdev->dirty.y2 - qfbdev->dirty.y1) &&
+	    (qfbdev->dirty.x2 - qfbdev->dirty.x1)) {
+		if (qfbdev->dirty.y1 < y)
+			y = qfbdev->dirty.y1;
+		if (qfbdev->dirty.y2 > y2)
+			y2 = qfbdev->dirty.y2;
+		if (qfbdev->dirty.x1 < x)
+			x = qfbdev->dirty.x1;
+		if (qfbdev->dirty.x2 > x2)
+			x2 = qfbdev->dirty.x2;
+	}
 
 	qfbdev->dirty.x1 = x;
 	qfbdev->dirty.x2 = x2;
@@ -280,7 +282,7 @@ int qxl_get_handle_for_primary_fb(struct qxl_device *qdev,
 }
 
 static int qxlfb_create_pinned_object(struct qxl_fbdev *qfbdev,
-				      struct drm_mode_fb_cmd2 *mode_cmd,
+				      const struct drm_mode_fb_cmd2 *mode_cmd,
 				      struct drm_gem_object **gobj_p)
 {
 	struct qxl_device *qdev = qfbdev->qdev;

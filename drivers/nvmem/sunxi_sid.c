@@ -13,9 +13,7 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
  */
-
 
 #include <linux/device.h>
 #include <linux/io.h>
@@ -26,7 +24,6 @@
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/random.h>
-
 
 static struct nvmem_config econfig = {
 	.name = "sunxi-sid",
@@ -55,8 +52,8 @@ static u8 sunxi_sid_read_byte(const struct sunxi_sid *sid,
 }
 
 static int sunxi_sid_read(void *context,
-			    const void *reg, size_t reg_size,
-			    void *val, size_t val_size)
+			  const void *reg, size_t reg_size,
+			  void *val, size_t val_size)
 {
 	struct sunxi_sid *sid = context;
 	unsigned int offset = *(u32 *)reg;
@@ -103,7 +100,7 @@ static int sunxi_sid_probe(struct platform_device *pdev)
 	struct nvmem_device *nvmem;
 	struct regmap *regmap;
 	struct sunxi_sid *sid;
-	int i, size;
+	int ret, i, size;
 	char *randomness;
 
 	sid = devm_kzalloc(dev, sizeof(*sid), GFP_KERNEL);
@@ -130,7 +127,12 @@ static int sunxi_sid_probe(struct platform_device *pdev)
 	if (IS_ERR(nvmem))
 		return PTR_ERR(nvmem);
 
-	randomness = kzalloc(sizeof(u8) * size, GFP_KERNEL);
+	randomness = kzalloc(sizeof(u8) * (size), GFP_KERNEL);
+	if (!randomness) {
+		ret = -EINVAL;
+		goto err_unreg_nvmem;
+	}
+
 	for (i = 0; i < size; i++)
 		randomness[i] = sunxi_sid_read_byte(sid, i);
 
@@ -140,6 +142,10 @@ static int sunxi_sid_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, nvmem);
 
 	return 0;
+
+err_unreg_nvmem:
+	nvmem_unregister(nvmem);
+	return ret;
 }
 
 static int sunxi_sid_remove(struct platform_device *pdev)

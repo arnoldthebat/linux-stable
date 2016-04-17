@@ -67,12 +67,12 @@ static struct acpi_scan_handler pci_link_handler = {
  * later even the link is disable. Instead, we just repick the active irq
  */
 struct acpi_pci_link_irq {
-	u8 active;		/* Current IRQ */
+	u32 active;		/* Current IRQ */
 	u8 triggering;		/* All IRQs */
 	u8 polarity;		/* All IRQs */
 	u8 resource_type;
 	u8 possible_count;
-	u8 possible[ACPI_PCI_LINK_MAX_POSSIBLE];
+	u32 possible[ACPI_PCI_LINK_MAX_POSSIBLE];
 	u8 initialized:1;
 	u8 reserved:7;
 };
@@ -498,8 +498,7 @@ int __init acpi_irq_penalty_init(void)
 			    PIRQ_PENALTY_PCI_POSSIBLE;
 		}
 	}
-	/* Add a penalty for the SCI */
-	acpi_irq_penalty[acpi_gbl_FADT.sci_interrupt] += PIRQ_PENALTY_PCI_USING;
+
 	return 0;
 }
 
@@ -552,6 +551,13 @@ static int acpi_pci_link_allocate(struct acpi_pci_link *link)
 			    acpi_irq_penalty[link->irq.possible[i]])
 				irq = link->irq.possible[i];
 		}
+	}
+	if (acpi_irq_penalty[irq] >= PIRQ_PENALTY_ISA_ALWAYS) {
+		printk(KERN_ERR PREFIX "No IRQ available for %s [%s]. "
+			    "Try pci=noacpi or acpi=off\n",
+			    acpi_device_name(link->device),
+			    acpi_device_bid(link->device));
+		return -ENODEV;
 	}
 
 	/* Attempt to enable the link device at this IRQ. */
@@ -819,6 +825,12 @@ void acpi_penalize_isa_irq(int irq, int active)
 		else
 			acpi_irq_penalty[irq] += PIRQ_PENALTY_PCI_USING;
 	}
+}
+
+bool acpi_isa_irq_available(int irq)
+{
+	return irq >= 0 && (irq >= ARRAY_SIZE(acpi_irq_penalty) ||
+			    acpi_irq_penalty[irq] < PIRQ_PENALTY_ISA_ALWAYS);
 }
 
 /*

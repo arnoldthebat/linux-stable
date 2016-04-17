@@ -672,8 +672,12 @@ int amdgpu_atombios_get_clock_info(struct amdgpu_device *adev)
 		/* disp clock */
 		adev->clock.default_dispclk =
 			le32_to_cpu(firmware_info->info_21.ulDefaultDispEngineClkFreq);
-		if (adev->clock.default_dispclk == 0)
-			adev->clock.default_dispclk = 54000; /* 540 Mhz */
+		/* set a reasonable default for DP */
+		if (adev->clock.default_dispclk < 53900) {
+			DRM_INFO("Changing default dispclk from %dMhz to 600Mhz\n",
+				 adev->clock.default_dispclk / 100);
+			adev->clock.default_dispclk = 60000;
+		}
 		adev->clock.dp_extclk =
 			le16_to_cpu(firmware_info->info_21.usUniphyDPModeExtClkFreq);
 		adev->clock.current_dispclk = adev->clock.default_dispclk;
@@ -1508,6 +1512,19 @@ int amdgpu_atombios_init_mc_reg_table(struct amdgpu_device *adev,
 		return 0;
 	}
 	return -EINVAL;
+}
+
+bool amdgpu_atombios_has_gpu_virtualization_table(struct amdgpu_device *adev)
+{
+	int index = GetIndexIntoMasterTable(DATA, GPUVirtualizationInfo);
+	u8 frev, crev;
+	u16 data_offset, size;
+
+	if (amdgpu_atom_parse_data_header(adev->mode_info.atom_context, index, &size,
+					  &frev, &crev, &data_offset))
+		return true;
+
+	return false;
 }
 
 void amdgpu_atombios_scratch_regs_lock(struct amdgpu_device *adev, bool lock)
